@@ -35,3 +35,7 @@ a result for every name in the database.
 List all entries with a non-zero amount for the given name. Include the moving
 averages. If no name is given, list all entries. Results are sorted by name,
 then date.
+
+To delete an entry, use `set <name> <date> 0`.
+
+To exit the program, hit Ctrl-D.

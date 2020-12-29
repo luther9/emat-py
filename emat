@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+
+from bisect import bisect_left
+import cmd
+from datetime import date as Date
+from itertools import starmap
+import pickle
+import re
+import readline
+import sys
+
+# DATABASE REPRESENTATION
+
+# The database is a dict with track names as keys. Each value is a tuple of
+# (date, value) pairs. The reason why we represent a track with a tuple instead
+# of a dict is because every command that queries a date also requires us to
+# look at all previous dates.
+
+DAY_FACTOR = 0.1
+DECAY = 1 - DAY_FACTOR
+
+
+def checkArg(regex, arg, command):
+    """Validate arg by seeing if it matches regex. Return the match object.
+
+    If arg doesn't match, run help for the given command.
+    """
+    match = re.fullmatch(regex, arg)
+    if not match:
+        Cmd(None).do_help(command)
+    return match
+
+
+def getDate(dateStr):
+    """Convert dateStr in ISO format to a Date object.
+
+    If dateStr is falsy, return today's date. If dateStr is in an invalid
+    format, print an error message and return None.
+    """
+    try:
+        return Date.fromisoformat(dateStr.strip()) if dateStr else Date.today()
+    except ValueError:
+        print('Date format is YYYY-MM-DD. Got: ' + dateStr)
+
+
+def getNumber(nStr):
+    """Convert nStr from a string to a float.
+
+    If nStr is invalid, print an error message and return None.
+    """
+    try:
+        return float(nStr)
+    except ValueError:
+        print('Amount must be a number. Got: ' + nStr)
+
+
+def findEntry(track, date):
+    """Return the index in track where date should be inserted.
+
+    The second element of the return value is True if date already exists in
+    track.
+    """
+    dates = tuple(x[0] for x in track)
+    i = bisect_left(dates, date)
+    return i, len(dates) > i and dates[i] == date
+
+
+def showEntry(db, name, date):
+    """Return a string showing the amount and average for the given name and
+    date.
+    """
+    average = 0
+    for thisDate, amount in db[name]:
+        if thisDate > date:
+            amount = 0
+            break
+        average += (
+            (amount * DAY_FACTOR)
+            * DECAY**(date - thisDate).days
+        )
+        if thisDate == date:
+            break
+    return f'{name} {date} {amount:6.6g} {average:6.6g}'
+
+
+class Cmd(cmd.Cmd):
+    """Command methods return either None or True."""
+    prompt = '> '
+
+    def __init__(self, db):
+        super().__init__()
+        self.db = db
+
+    def do_EOF(self, arg):
+        """End the program.
+
+        If there are any changes to the database, write it to the file first.
+        """
+        return True
+
+    def do_set(self, arg):
+        """set '<name>' <date> <amount>
+
+        Create a database entry. If there is already an entry with the same name
+        and date, overwrite the amount. If there are no existing entries with
+        the same name, get confirmation to create a new track.
+        """
+        match = checkArg(r"'(.*)'\s+(\S+\s+)?(\S+)", arg, 'set')
+        if match:
+            date = getDate(match[2])
+            amount = getNumber(match[3])
+            if date and amount is not None:
+                name = match[1]
+                if name not in self.db:
+                    while True:
+                        answer = input(
+                            'Are you sure you want to create a new track? [Y/n] ',
+                        )
+                        if not answer:
+                            break
+                        a = answer[0].lower()
+                        if a == 'n':
+                            return
+                        if a == 'y':
+                            break
+                track = self.db.get(name, ())
+                i, exists = findEntry(track, date)
+                track_ = (
+                    track[:i]
+                    + (((date, amount),) if amount else ())
+                    + track[i + exists :]
+                )
+                self.db = dict(
+                    {k: v for k, v in self.db.items() if k != name},
+                    **{name: track_} if track_ else {},
+                )
+                print(showEntry(self.db, name, date))
+
+    def do_get(self, arg):
+        """get '<name>' <date>
+
+        Show the amount and moving average for the given date. If no name is
+        given, show a result for every name in the database.
+        """
+        match = checkArg(r"('(.*)')?(\s+|^|$)(\S+)?", arg, 'get')
+        if match:
+            date = getDate(match[4])
+            if date:
+                def showData(name):
+                    return showEntry(self.db, name, date)
+                name = match[2]
+                print(
+                    '\n'.join(
+                        showData(thisName) for thisName in sorted(self.db)
+                    )
+                    if name is None
+                    else showData(name)
+                    if name in self.db
+                    else name + ' is not in the database.',
+                )
+
+
+def main(argv):
+    if not argv:
+        print('Need a filename argument')
+        return 1
+    filename = argv[0] + '.emat'
+    try:
+        with open(filename, 'rb') as f:
+            db = pickle.load(f)
+    except FileNotFoundError:
+        db = {}
+    cmd = Cmd(db)
+    cmd.cmdloop()
+    if db != cmd.db:
+        with open(filename, 'wb') as f:
+            pickle.dump(cmd.db, f)
+    print(cmd.db)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
