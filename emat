@@ -65,7 +65,7 @@ def findEntry(track, date):
     return i, len(dates) > i and dates[i] == date
 
 
-def showEntry(db, name, date):
+def showEntry(db, name, date, nameWidth=1):
     """Return a string showing the amount and average for the given name and
     date.
     """
@@ -80,7 +80,9 @@ def showEntry(db, name, date):
         )
         if thisDate == date:
             break
-    return f'{name} {date} {amount:6.6g} {average:6.6g}'
+    if date > thisDate:
+        amount = 0
+    return f'{name:{nameWidth}} {date} {amount:6.6g} {average:6.6g}'
 
 
 class Cmd(cmd.Cmd):
@@ -146,12 +148,14 @@ class Cmd(cmd.Cmd):
         if match:
             date = getDate(match[4])
             if date:
-                def showData(name):
-                    return showEntry(self.db, name, date)
+                def showData(name, nameWidth=1):
+                    return showEntry(self.db, name, date, nameWidth)
                 name = match[2]
+                names = sorted(self.db)
+                nameWidth = max(len(n) for n in names)
                 print(
                     '\n'.join(
-                        showData(thisName) for thisName in sorted(self.db)
+                        showData(thisName, nameWidth) for thisName in names
                     )
                     if name is None
                     else showData(name)
