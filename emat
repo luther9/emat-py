@@ -17,7 +17,12 @@ import sys
 # look at all previous dates.
 
 DAY_FACTOR = 0.1
-DECAY = 1 - DAY_FACTOR
+DECAY = 0.9
+
+
+def maxLen(iterable):
+    """Get the maximum length of the items in iterable."""
+    return max(len(x) for x in iterable)
 
 
 def checkArg(regex, arg, command):
@@ -82,7 +87,16 @@ def showEntry(db, name, date, nameWidth=1):
             break
     if date > thisDate:
         amount = 0
-    return f'{name:{nameWidth}} {date} {amount:6.6g} {average:6.6g}'
+    # To show any blemishes in the record, the precision must be as high as
+    # possible without showing a lot of 9s or 0s that are obviously due to
+    # rounding error.
+    return f'{name:{nameWidth}} {date} {amount:3.15g} {average:9.15g}'
+
+
+def listEntries(db, name, nameWidth):
+    return '\n'.join(
+        showEntry(db, name, entry[0], nameWidth) for entry in db[name]
+    )
 
 
 class Cmd(cmd.Cmd):
@@ -152,7 +166,7 @@ class Cmd(cmd.Cmd):
                     return showEntry(self.db, name, date, nameWidth)
                 name = match[2]
                 names = sorted(self.db)
-                nameWidth = max(len(n) for n in names)
+                nameWidth = maxLen(names)
                 print(
                     '\n'.join(
                         showData(thisName, nameWidth) for thisName in names
@@ -162,6 +176,27 @@ class Cmd(cmd.Cmd):
                     if name in self.db
                     else name + ' is not in the database.',
                 )
+
+    def do_list(self, arg):
+        """list '<name>'
+
+        List all entries with a non-zero amount for the given name. Include the
+        moving averages. If no name is given, list all entries. Results are
+        sorted by name, then date.
+        """
+        def listData(name, nameWidth=1):
+            return listEntries(self.db, name, nameWidth)
+        if arg:
+            name = arg.strip("'")
+            print(
+                listData(name)
+                if name in self.db
+                else name + ' is not in the database.',
+            )
+        else:
+            names = sorted(self.db)
+            nameWidth = maxLen(names)
+            print('\n'.join(listData(name, nameWidth) for name in names))
 
 
 def main(argv):
@@ -179,7 +214,6 @@ def main(argv):
     if db != cmd.db:
         with open(filename, 'wb') as f:
             pickle.dump(cmd.db, f)
-    print(cmd.db)
 
 
 if __name__ == '__main__':
