@@ -85,12 +85,38 @@ def showEntry(db, name, date, nameWidth=1):
         )
         if thisDate == date:
             break
-    if date > thisDate:
-        amount = 0
+    todaysAmount = amount if thisDate == date else 0
     # To show any blemishes in the record, the precision must be as high as
     # possible without showing a lot of 9s or 0s that are obviously due to
     # rounding error.
-    return f'{name:{nameWidth}} {date} {amount:3.15g} {average:9.15g}'
+    return f'{name:{nameWidth}} {date} {todaysAmount:3.15g} {average:16.15g}'
+
+
+def getArgsForSet(db, arg, command):
+    """Parse args for 'set' and 'add' commands.
+
+    If arg is invalid, return None. Otherwise, return a (name, date, amount)
+    tuple.
+    """
+    match = checkArg(r"'(.*)'\s+(\S+\s+)?(\S+)", arg, command)
+    if match:
+        date = getDate(match[2])
+        amount = getNumber(match[3])
+        if date and amount is not None:
+            name = match[1]
+            if name not in db:
+                while True:
+                    answer = input(
+                        'Are you sure you want to create a new track? [Y/n] ',
+                    )
+                    if not answer:
+                        break
+                    a = answer[0].lower()
+                    if a == 'n':
+                        return
+                    if a == 'y':
+                        break
+        return name, date, amount
 
 
 def listEntries(db, name, nameWidth):
@@ -114,6 +140,21 @@ class Cmd(cmd.Cmd):
         """
         return True
 
+    def _setEntry(self, name, date, amount):
+        """Set the entry with the given name and date to the amount."""
+        track = self.db.get(name, ())
+        i, exists = findEntry(track, date)
+        track_ = (
+            track[:i]
+            + (((date, amount),) if amount else ())
+            + track[i + exists :]
+        )
+        self.db = dict(
+            {k: v for k, v in self.db.items() if k != name},
+            **{name: track_} if track_ else {},
+        )
+        print(showEntry(self.db, name, date))
+
     def do_set(self, arg):
         """set '<name>' <date> <amount>
 
@@ -121,36 +162,26 @@ class Cmd(cmd.Cmd):
         and date, overwrite the amount. If there are no existing entries with
         the same name, get confirmation to create a new track.
         """
-        match = checkArg(r"'(.*)'\s+(\S+\s+)?(\S+)", arg, 'set')
-        if match:
-            date = getDate(match[2])
-            amount = getNumber(match[3])
-            if date and amount is not None:
-                name = match[1]
-                if name not in self.db:
-                    while True:
-                        answer = input(
-                            'Are you sure you want to create a new track? [Y/n] ',
-                        )
-                        if not answer:
-                            break
-                        a = answer[0].lower()
-                        if a == 'n':
-                            return
-                        if a == 'y':
-                            break
-                track = self.db.get(name, ())
+        args = getArgsForSet(self.db, arg, 'set')
+        if args:
+            self._setEntry(*args)
+
+    def do_add(self, arg):
+        """add '<name>' <date> <amount>
+
+        Like `set`, but adds the given amount to the current amount to get the
+        new amount.
+        """
+        args = getArgsForSet(self.db, arg, 'add')
+        if args:
+            name, date, amount = args
+            if name not in self.db:
+                oldAmount = 0
+            else:
+                track = self.db[name]
                 i, exists = findEntry(track, date)
-                track_ = (
-                    track[:i]
-                    + (((date, amount),) if amount else ())
-                    + track[i + exists :]
-                )
-                self.db = dict(
-                    {k: v for k, v in self.db.items() if k != name},
-                    **{name: track_} if track_ else {},
-                )
-                print(showEntry(self.db, name, date))
+                oldAmount = track[i][1] if exists else 0
+            self._setEntry(name, date, oldAmount + amount)
 
     def do_get(self, arg):
         """get '<name>' <date>
@@ -214,6 +245,7 @@ def main(argv):
     if db != cmd.db:
         with open(filename, 'wb') as f:
             pickle.dump(cmd.db, f)
+    print()
 
 
 if __name__ == '__main__':
