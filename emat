@@ -89,7 +89,7 @@ def showEntry(db, name, date, nameWidth=1):
     # To show any blemishes in the record, the precision must be as high as
     # possible without showing a lot of 9s or 0s that are obviously due to
     # rounding error.
-    return f'{name:{nameWidth}} {date} {todaysAmount:3.15g} {average:16.15g}'
+    return f'{name:{nameWidth}} {date} {todaysAmount:3.15g} {average:.15g}'
 
 
 def getArgsForSet(db, arg, command):
