@@ -129,15 +129,13 @@ class Cmd(cmd.Cmd):
     """Command methods return either None or True."""
     prompt = '> '
 
-    def __init__(self, db):
+    def __init__(self, db, filename):
         super().__init__()
         self.db = db
+        self.filename = filename
 
     def do_EOF(self, arg):
-        """End the program.
-
-        If there are any changes to the database, write it to the file first.
-        """
+        """End the program."""
         return True
 
     def _setEntry(self, name, date, amount):
@@ -229,6 +227,11 @@ class Cmd(cmd.Cmd):
             nameWidth = maxLen(names)
             print('\n'.join(listData(name, nameWidth) for name in names))
 
+    def do_save(self, arg):
+        """Save the database."""
+        with open(self.filename, 'wb') as f:
+            pickle.dump(self.db, f)
+
 
 def main(argv):
     if not argv:
@@ -240,11 +243,8 @@ def main(argv):
             db = pickle.load(f)
     except FileNotFoundError:
         db = {}
-    cmd = Cmd(db)
+    cmd = Cmd(db, filename)
     cmd.cmdloop()
-    if db != cmd.db:
-        with open(filename, 'wb') as f:
-            pickle.dump(cmd.db, f)
     print()
 
 
