@@ -35,6 +35,8 @@ import sys
 # of a dict is because every command that queries a date also requires us to
 # look at all previous dates.
 
+# DAY_FACTOR + DECAY should equal 1. Otherwise, the "averages" won't reflect a
+# real daily average.
 DAY_FACTOR = 0.1
 DECAY = 0.9
 
@@ -108,7 +110,7 @@ def showEntry(db, name, date, nameWidth=1):
     # To show any blemishes in the record, the precision must be as high as
     # possible without showing a lot of 9s or 0s that are obviously due to
     # rounding error.
-    return f'{name:{nameWidth}} {date} {todaysAmount:3.15g} {average:.15g}'
+    return f'{name:{nameWidth}} {date} {todaysAmount:.15g} {average:.15g}'
 
 
 def getArgsForSet(db, arg, command):
