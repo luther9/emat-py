@@ -216,7 +216,7 @@ class Cmd(cmd.Cmd):
                     return showEntry(self.db, name, date, nameWidth)
                 name = match[2]
                 names = sorted(self.db)
-                nameWidth = maxLen(names)
+                nameWidth = maxLen(names) if self.db else 0
                 print(
                     '\n'.join(
                         showData(thisName, nameWidth) for thisName in names
