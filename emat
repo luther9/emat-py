@@ -53,7 +53,7 @@ def checkArg(regex, arg, command):
     """
     match = re.fullmatch(regex, arg)
     if not match:
-        Cmd(None).do_help(command)
+        Cmd(None, None).do_help(command)
     return match
 
 
