@@ -80,6 +80,18 @@ def getNumber(nStr):
         print('Amount must be a number. Got: ' + nStr)
 
 
+def parseGet(arg):
+    """Parse arguments for the get command."""
+    args = shlex.split(arg)
+    name = args[0] if args else ''
+    try:
+        date = Date.today() if len(args) < 2 else Date.fromisoformat(args[1])
+    except ValueError:
+        print('Date format is YYYY-MM-DD. Got: ' + dateStr)
+        return name, None
+    return name, date
+
+
 def findEntry(track, date):
     """Return the index in track where date should be inserted.
 
@@ -205,27 +217,25 @@ class Cmd(cmd.Cmd):
     def do_get(self, arg):
         """get <name> <date>
 
-        Show the amount and moving average for the given date. If no name is
-        given, show a result for every name in the database.
+        Show the amount and moving average for the given date. If the name is
+        the empty string (the default), show a result for every name in the
+        database.
         """
-        match = checkArg(r"('(.*)')?(\s+|^|$)(\S+)?", arg, 'get')
-        if match:
-            date = getDate(match[4])
-            if date:
-                def showData(name, nameWidth=1):
-                    return showEntry(self.db, name, date, nameWidth)
-                name = match[2]
-                names = sorted(self.db)
-                nameWidth = maxLen(names) if self.db else 0
-                print(
-                    '\n'.join(
-                        showData(thisName, nameWidth) for thisName in names
-                    )
-                    if name is None
-                    else showData(name)
-                    if name in self.db
-                    else name + ' is not in the database.',
+        name, date = parseGet(arg)
+        if date:
+            def showData(name, nameWidth=1):
+                return showEntry(self.db, name, date, nameWidth)
+            names = sorted(self.db)
+            nameWidth = maxLen(names) if self.db else 0
+            print(
+                '\n'.join(
+                    showData(thisName, nameWidth) for thisName in names
                 )
+                if not name
+                else showData(name)
+                if name in self.db
+                else name + ' is not in the database.',
+            )
 
     def do_list(self, arg):
         """list <name>
