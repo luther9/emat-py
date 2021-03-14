@@ -22,10 +22,10 @@
 from bisect import bisect_left
 import cmd
 from datetime import date as Date
-from itertools import starmap
 import pickle
 import re
 import readline
+import shlex
 import sys
 
 # DATABASE REPRESENTATION
@@ -175,7 +175,7 @@ class Cmd(cmd.Cmd):
         print(showEntry(self.db, name, date))
 
     def do_set(self, arg):
-        """set '<name>' <date> <amount>
+        """set <name> <date> <amount>
 
         Create a database entry. If there is already an entry with the same name
         and date, overwrite the amount. If there are no existing entries with
@@ -186,7 +186,7 @@ class Cmd(cmd.Cmd):
             self._setEntry(*args)
 
     def do_add(self, arg):
-        """add '<name>' <date> <amount>
+        """add <name> <date> <amount>
 
         Like `set`, but adds the given amount to the current amount to get the
         new amount.
@@ -203,7 +203,7 @@ class Cmd(cmd.Cmd):
             self._setEntry(name, date, oldAmount + amount)
 
     def do_get(self, arg):
-        """get '<name>' <date>
+        """get <name> <date>
 
         Show the amount and moving average for the given date. If no name is
         given, show a result for every name in the database.
@@ -228,7 +228,7 @@ class Cmd(cmd.Cmd):
                 )
 
     def do_list(self, arg):
-        """list '<name>'
+        """list <name>
 
         List all entries with a non-zero amount for the given name. Include the
         moving averages. If no name is given, list all entries. Results are
@@ -237,7 +237,7 @@ class Cmd(cmd.Cmd):
         def listData(name, nameWidth=1):
             return listEntries(self.db, name, nameWidth)
         if arg:
-            name = arg.strip("'")
+            name = shlex.split(arg)[0]
             print(
                 listData(name)
                 if name in self.db

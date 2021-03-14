@@ -9,10 +9,11 @@
 
 # Commands
 
-Commands may require a track name, a date, and an amount. The name must be in
-single quotes. If the date is omitted, `emat` will assume today's date. No two
-database entries may have the same name and date. If a given name/date
-combination does not yet exist, its amount is assumed to be 0.
+Commands may require a track name, a date, and an amount. Arguments are
+interpreted in a bash-like syntax, so you may use quotes and backslashes to make
+any track name you want. If the date is omitted, `emat` will assume today's
+date. No two database entries may have the same name and date. If a given
+name/date combination does not yet exist, its amount is assumed to be 0.
 
 ## `set <name> <date> <amount>`
 
