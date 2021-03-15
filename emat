@@ -23,7 +23,6 @@ from bisect import bisect_left
 import cmd
 from datetime import date as Date
 import pickle
-import re
 import readline
 import shlex
 import sys
@@ -43,41 +42,7 @@ DECAY = 0.9
 
 def maxLen(iterable):
     """Get the maximum length of the items in iterable."""
-    return max(len(x) for x in iterable)
-
-
-def checkArg(regex, arg, command):
-    """Validate arg by seeing if it matches regex. Return the match object.
-
-    If arg doesn't match, run help for the given command.
-    """
-    match = re.fullmatch(regex, arg)
-    if not match:
-        Cmd(None).do_help(command)
-    return match
-
-
-def getDate(dateStr):
-    """Convert dateStr in ISO format to a Date object.
-
-    If dateStr is falsy, return today's date. If dateStr is in an invalid
-    format, print an error message and return None.
-    """
-    try:
-        return Date.fromisoformat(dateStr.strip()) if dateStr else Date.today()
-    except ValueError:
-        print('Date format is YYYY-MM-DD. Got: ' + dateStr)
-
-
-def getNumber(nStr):
-    """Convert nStr from a string to a float.
-
-    If nStr is invalid, print an error message and return None.
-    """
-    try:
-        return float(nStr)
-    except ValueError:
-        print('Amount must be a number. Got: ' + nStr)
+    return max(map(len, iterable))
 
 
 def parseGet(arg):
@@ -122,7 +87,18 @@ def showEntry(db, name, date, nameWidth=1):
     # To show any blemishes in the record, the precision must be as high as
     # possible without showing a lot of 9s or 0s that are obviously due to
     # rounding error.
-    return f'{name:{nameWidth}} {date} {todaysAmount:.15g} {average:.15g}'
+    return f'{name:{nameWidth}} {date} {todaysAmount} {average:.5g}'
+
+
+def findType(lst, cls):
+    """Call cls on each element in lst and return the first result that doesn't
+    throw a ValueError. If none are successful, return None.
+    """
+    for x in lst:
+        try:
+            return cls(x)
+        except ValueError:
+            pass
 
 
 def getArgsForSet(db, arg, command):
@@ -131,25 +107,40 @@ def getArgsForSet(db, arg, command):
     If arg is invalid, return None. Otherwise, return a (name, date, amount)
     tuple.
     """
-    match = checkArg(r"'(.*)'\s+(\S+\s+)?(\S+)", arg, command)
-    if match:
-        date = getDate(match[2])
-        amount = getNumber(match[3])
-        if date and amount is not None:
-            name = match[1]
-            if name not in db:
-                while True:
-                    answer = input(
-                        'Are you sure you want to create a new track? [Y/n] ',
-                    )
-                    if not answer:
-                        break
-                    a = answer[0].lower()
-                    if a == 'n':
-                        return
-                    if a == 'y':
-                        break
-        return name, date, amount
+    args = shlex.split(arg)
+    if len(args) not in (2, 3):
+        self.do_help(command)
+        return
+    dateAmount = args[1:]
+    date = (
+        Date.today()
+        if len(dateAmount) < 2
+        else findType(dateAmount, Date.fromisoformat)
+    )
+    if date is None:
+        print('No valid date in ' + dateAmount)
+        return
+    amount = findType(dateAmount, float)
+    if amount is None:
+        print('No valid amount in ' + dateAmount)
+        return
+    name = args[0]
+    if not name:
+        print("Track name can't be an empty string")
+        return
+    if name not in db:
+        while True:
+            answer = input(
+                'Are you sure you want to create a new track? [Y/n] ',
+            )
+            if not answer:
+                break
+            a = answer[0].lower()
+            if a == 'n':
+                return
+            if a == 'y':
+                break
+    return name, date, amount
 
 
 def listEntries(db, name, nameWidth):
