@@ -22,10 +22,9 @@
 from bisect import bisect_left
 import cmd
 from datetime import date as Date
-from itertools import starmap
 import pickle
-import re
 import readline
+import shlex
 import sys
 
 # DATABASE REPRESENTATION
@@ -43,41 +42,19 @@ DECAY = 0.9
 
 def maxLen(iterable):
     """Get the maximum length of the items in iterable."""
-    return max(len(x) for x in iterable)
+    return max(map(len, iterable))
 
 
-def checkArg(regex, arg, command):
-    """Validate arg by seeing if it matches regex. Return the match object.
-
-    If arg doesn't match, run help for the given command.
-    """
-    match = re.fullmatch(regex, arg)
-    if not match:
-        Cmd(None, None).do_help(command)
-    return match
-
-
-def getDate(dateStr):
-    """Convert dateStr in ISO format to a Date object.
-
-    If dateStr is falsy, return today's date. If dateStr is in an invalid
-    format, print an error message and return None.
-    """
+def parseGet(arg):
+    """Parse arguments for the get command."""
+    args = shlex.split(arg)
+    name = args[0] if args else ''
     try:
-        return Date.fromisoformat(dateStr.strip()) if dateStr else Date.today()
+        date = Date.today() if len(args) < 2 else Date.fromisoformat(args[1])
     except ValueError:
         print('Date format is YYYY-MM-DD. Got: ' + dateStr)
-
-
-def getNumber(nStr):
-    """Convert nStr from a string to a float.
-
-    If nStr is invalid, print an error message and return None.
-    """
-    try:
-        return float(nStr)
-    except ValueError:
-        print('Amount must be a number. Got: ' + nStr)
+        return name, None
+    return name, date
 
 
 def findEntry(track, date):
@@ -110,7 +87,18 @@ def showEntry(db, name, date, nameWidth=1):
     # To show any blemishes in the record, the precision must be as high as
     # possible without showing a lot of 9s or 0s that are obviously due to
     # rounding error.
-    return f'{name:{nameWidth}} {date} {todaysAmount:.15g} {average:.15g}'
+    return f'{name:{nameWidth}} {date} {todaysAmount} {average:.5g}'
+
+
+def findType(lst, cls):
+    """Call cls on each element in lst and return the first result that doesn't
+    throw a ValueError. If none are successful, return None.
+    """
+    for x in lst:
+        try:
+            return cls(x)
+        except ValueError:
+            pass
 
 
 def getArgsForSet(db, arg, command):
@@ -119,25 +107,40 @@ def getArgsForSet(db, arg, command):
     If arg is invalid, return None. Otherwise, return a (name, date, amount)
     tuple.
     """
-    match = checkArg(r"'(.*)'\s+(\S+\s+)?(\S+)", arg, command)
-    if match:
-        date = getDate(match[2])
-        amount = getNumber(match[3])
-        if date and amount is not None:
-            name = match[1]
-            if name not in db:
-                while True:
-                    answer = input(
-                        'Are you sure you want to create a new track? [Y/n] ',
-                    )
-                    if not answer:
-                        break
-                    a = answer[0].lower()
-                    if a == 'n':
-                        return
-                    if a == 'y':
-                        break
-        return name, date, amount
+    args = shlex.split(arg)
+    if len(args) not in (2, 3):
+        self.do_help(command)
+        return
+    dateAmount = args[1:]
+    date = (
+        Date.today()
+        if len(dateAmount) < 2
+        else findType(dateAmount, Date.fromisoformat)
+    )
+    if date is None:
+        print('No valid date in ' + dateAmount)
+        return
+    amount = findType(dateAmount, float)
+    if amount is None:
+        print('No valid amount in ' + dateAmount)
+        return
+    name = args[0]
+    if not name:
+        print("Track name can't be an empty string")
+        return
+    if name not in db:
+        while True:
+            answer = input(
+                'Are you sure you want to create a new track? [Y/n] ',
+            )
+            if not answer:
+                break
+            a = answer[0].lower()
+            if a == 'n':
+                return
+            if a == 'y':
+                break
+    return name, date, amount
 
 
 def listEntries(db, name, nameWidth):
@@ -175,7 +178,7 @@ class Cmd(cmd.Cmd):
         print(showEntry(self.db, name, date))
 
     def do_set(self, arg):
-        """set '<name>' <date> <amount>
+        """set <name> <date> <amount>
 
         Create a database entry. If there is already an entry with the same name
         and date, overwrite the amount. If there are no existing entries with
@@ -186,7 +189,7 @@ class Cmd(cmd.Cmd):
             self._setEntry(*args)
 
     def do_add(self, arg):
-        """add '<name>' <date> <amount>
+        """add <name> <date> <amount>
 
         Like `set`, but adds the given amount to the current amount to get the
         new amount.
@@ -203,32 +206,30 @@ class Cmd(cmd.Cmd):
             self._setEntry(name, date, oldAmount + amount)
 
     def do_get(self, arg):
-        """get '<name>' <date>
+        """get <name> <date>
 
-        Show the amount and moving average for the given date. If no name is
-        given, show a result for every name in the database.
+        Show the amount and moving average for the given date. If the name is
+        the empty string (the default), show a result for every name in the
+        database.
         """
-        match = checkArg(r"('(.*)')?(\s+|^|$)(\S+)?", arg, 'get')
-        if match:
-            date = getDate(match[4])
-            if date:
-                def showData(name, nameWidth=1):
-                    return showEntry(self.db, name, date, nameWidth)
-                name = match[2]
-                names = sorted(self.db)
-                nameWidth = maxLen(names) if self.db else 0
-                print(
-                    '\n'.join(
-                        showData(thisName, nameWidth) for thisName in names
-                    )
-                    if name is None
-                    else showData(name)
-                    if name in self.db
-                    else name + ' is not in the database.',
+        name, date = parseGet(arg)
+        if date:
+            def showData(name, nameWidth=1):
+                return showEntry(self.db, name, date, nameWidth)
+            names = sorted(self.db)
+            nameWidth = maxLen(names) if self.db else 0
+            print(
+                '\n'.join(
+                    showData(thisName, nameWidth) for thisName in names
                 )
+                if not name
+                else showData(name)
+                if name in self.db
+                else name + ' is not in the database.',
+            )
 
     def do_list(self, arg):
-        """list '<name>'
+        """list <name>
 
         List all entries with a non-zero amount for the given name. Include the
         moving averages. If no name is given, list all entries. Results are
@@ -237,7 +238,7 @@ class Cmd(cmd.Cmd):
         def listData(name, nameWidth=1):
             return listEntries(self.db, name, nameWidth)
         if arg:
-            name = arg.strip("'")
+            name = shlex.split(arg)[0]
             print(
                 listData(name)
                 if name in self.db
