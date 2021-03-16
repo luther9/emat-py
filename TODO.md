@@ -1,3 +1,2 @@
-* bash-like argument interpretation. (See `shlex` library.)
-* Tab completion for track names.
+* Make changetrackname program.
 * `EMAT_DAY_FACTOR` environment variable.
