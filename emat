@@ -254,6 +254,14 @@ class Cmd(cmd.Cmd):
         with open(self.filename, 'wb') as f:
             pickle.dump(self.db, f)
 
+    def completedefault(self, text, line, begidx, endidx):
+        """Auto-complete the track names."""
+        # The following facts about this callback are not documented:
+        # text is the current stretch of non-whitespace. Quote marks seem to be
+        # handled in some "smart" way that I can't determine.
+        # We must return an indexable sequence, not an iterator.
+        return tuple(name for name in self.db if name.startswith(text))
+
 
 def main(argv):
     if not argv:
