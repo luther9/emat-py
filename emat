@@ -84,10 +84,9 @@ def showEntry(db, name, date, nameWidth=1):
         if thisDate == date:
             break
     todaysAmount = amount if thisDate == date else 0
-    # To show any blemishes in the record, the precision must be as high as
-    # possible without showing a lot of 9s or 0s that are obviously due to
-    # rounding error.
-    return f'{name:{nameWidth}} {date} {todaysAmount} {average:.5g}'
+    # Use .g format for todaysAmount, because without a format, it shows a
+    # gratuitous '.0'.
+    return f'{name:{nameWidth}} {date} {todaysAmount:.15g} {average:.5g}'
 
 
 def findType(lst, cls):
