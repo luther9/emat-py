@@ -45,16 +45,34 @@ def maxLen(iterable):
     return max(map(len, iterable))
 
 
-def parseGet(arg):
-    """Parse arguments for the get command."""
-    args = shlex.split(arg)
-    name = args[0] if args else ''
+def shlexSplit(arg):
+    """Call shlex.split and return the result.
+
+    If it raises a ValueError, print it and return None.
+    """
     try:
-        date = Date.today() if len(args) < 2 else Date.fromisoformat(args[1])
-    except ValueError:
-        print('Date format is YYYY-MM-DD. Got: ' + dateStr)
-        return name, None
-    return name, date
+        return shlex.split(arg)
+    except ValueError as e:
+        print(e)
+
+
+def parseGet(arg):
+    """Parse arguments for the get command.
+
+    If the arguments are invalid, return None. If no date is given, use the
+    current date.
+    """
+    args = shlexSplit(arg)
+    if args is not None:
+        name = args[0] if args else ''
+        try:
+            date = (
+                Date.today() if len(args) < 2 else Date.fromisoformat(args[1])
+            )
+        except ValueError as e:
+            print(e)
+            return
+        return name, date
 
 
 def findEntry(track, date):
@@ -106,9 +124,11 @@ def getArgsForSet(db, arg, command):
     If arg is invalid, return None. Otherwise, return a (name, date, amount)
     tuple.
     """
-    args = shlex.split(arg)
+    args = shlexSplit(arg)
+    if args is None:
+        return
     if len(args) not in (2, 3):
-        self.do_help(command)
+        Cmd(None, None).do_help(command)
         return
     dateAmount = args[1:]
     date = (
@@ -117,11 +137,11 @@ def getArgsForSet(db, arg, command):
         else findType(dateAmount, Date.fromisoformat)
     )
     if date is None:
-        print('No valid date in ' + dateAmount)
+        print('No valid date in ', dateAmount)
         return
     amount = findType(dateAmount, float)
     if amount is None:
-        print('No valid amount in ' + dateAmount)
+        print('No valid amount in ', dateAmount)
         return
     name = args[0]
     if not name:
@@ -211,12 +231,13 @@ class Cmd(cmd.Cmd):
         the empty string (the default), show a result for every name in the
         database.
         """
-        name, date = parseGet(arg)
-        if date:
+        args = parseGet(arg)
+        if args:
+            name, date = args
             def showData(name, nameWidth=1):
                 return showEntry(self.db, name, date, nameWidth)
             names = sorted(self.db)
-            nameWidth = maxLen(names) if self.db else 0
+            nameWidth = maxLen(names) if self.db else None
             print(
                 '\n'.join(
                     showData(thisName, nameWidth) for thisName in names
@@ -237,12 +258,14 @@ class Cmd(cmd.Cmd):
         def listData(name, nameWidth=1):
             return listEntries(self.db, name, nameWidth)
         if arg:
-            name = shlex.split(arg)[0]
-            print(
-                listData(name)
-                if name in self.db
-                else name + ' is not in the database.',
-            )
+            args = shlexSplit(arg)
+            if args:
+                name = args[0]
+                print(
+                    listData(name)
+                    if name in self.db
+                    else name + ' is not in the database.',
+                )
         else:
             names = sorted(self.db)
             nameWidth = maxLen(names)
