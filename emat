@@ -22,6 +22,7 @@
 from bisect import bisect_left
 import cmd
 from datetime import date as Date
+from functools import lru_cache
 import pickle
 import readline
 import shlex
@@ -40,9 +41,14 @@ DAY_FACTOR = 0.1
 DECAY = 0.9
 
 
+# Memoize this function, because it gets called a lot in comprehensions.
+@lru_cache()
 def maxLen(iterable):
-    """Get the maximum length of the items in iterable."""
-    return max(map(len, iterable))
+    """Get the maximum length of the items in iterable.
+
+    If the iterable is empty, return None. Due to memoization, the iterable must
+    be hashable."""
+    return max(map(len, iterable), default=None)
 
 
 def shlexSplit(arg):
@@ -236,11 +242,10 @@ class Cmd(cmd.Cmd):
             name, date = args
             def showData(name, nameWidth=1):
                 return showEntry(self.db, name, date, nameWidth)
-            names = sorted(self.db)
-            nameWidth = maxLen(names) if self.db else None
+            names = tuple(sorted(self.db))
             print(
                 '\n'.join(
-                    showData(thisName, nameWidth) for thisName in names
+                    showData(thisName, maxLen(names)) for thisName in names
                 )
                 if not name
                 else showData(name)
@@ -267,9 +272,8 @@ class Cmd(cmd.Cmd):
                     else name + ' is not in the database.',
                 )
         else:
-            names = sorted(self.db)
-            nameWidth = maxLen(names)
-            print('\n'.join(listData(name, nameWidth) for name in names))
+            names = tuple(sorted(self.db))
+            print('\n'.join(listData(name, maxLen(names)) for name in names))
 
     def do_save(self, arg):
         """Save the database."""
