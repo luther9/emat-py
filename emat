@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import argparse
 from bisect import bisect_left
 import cmd
 from datetime import date as Date
@@ -26,7 +27,6 @@ from functools import lru_cache
 import pickle
 import readline
 import shlex
-import sys
 
 # DATABASE REPRESENTATION
 
@@ -35,10 +35,18 @@ import sys
 # of a dict is because every command that queries a date also requires us to
 # look at all previous dates.
 
-# DAY_FACTOR + DECAY should equal 1. Otherwise, the "averages" won't reflect a
-# real daily average.
-DAY_FACTOR = 0.1
-DECAY = 0.9
+argParser = argparse.ArgumentParser()
+argParser.add_argument(
+    'filename',
+    help="The filename of the database, not including the '.emat' extention",
+)
+argParser.add_argument(
+    'dayFactor',
+    nargs='?',
+    default=0.1,
+    type=float,
+    help="The weight of each amount on its own day's average. Should be between 0 and 1.",
+)
 
 
 # Memoize this function, because it gets called a lot in comprehensions.
@@ -92,22 +100,20 @@ def findEntry(track, date):
     return i, len(dates) > i and dates[i] == date
 
 
-def showEntry(db, name, date, nameWidth=1):
+def showEntry(db, name, date, dayFactor, nameWidth=1):
     """Return a string showing the amount and average for the given name and
     date.
     """
+    decay = 1 - dayFactor
+    # Can we use takeWhile+reduce instead of a loop? Does takeWhile exist?
     average = 0
+    todaysAmount = 0
     for thisDate, amount in db[name]:
         if thisDate > date:
-            amount = 0
             break
-        average += (
-            (amount * DAY_FACTOR)
-            * DECAY**(date - thisDate).days
-        )
+        average += amount * dayFactor * decay**(date - thisDate).days
         if thisDate == date:
-            break
-    todaysAmount = amount if thisDate == date else 0
+            todaysAmount = amount
     # Use .g format for todaysAmount, because without a format, it shows a
     # gratuitous '.0'.
     return f'{name:{nameWidth}} {date} {todaysAmount:.15g} {average:.5g}'
@@ -134,7 +140,7 @@ def getArgsForSet(db, arg, command):
     if args is None:
         return
     if len(args) not in (2, 3):
-        Cmd(None, None).do_help(command)
+        Cmd(None, None, None).do_help(command)
         return
     dateAmount = args[1:]
     date = (
@@ -168,20 +174,15 @@ def getArgsForSet(db, arg, command):
     return name, date, amount
 
 
-def listEntries(db, name, nameWidth):
-    return '\n'.join(
-        showEntry(db, name, entry[0], nameWidth) for entry in db[name]
-    )
-
-
 class Cmd(cmd.Cmd):
     """Command methods return either None or True."""
     prompt = '> '
 
-    def __init__(self, db, filename):
+    def __init__(self, db, filename, dayFactor):
         super().__init__()
         self.db = db
         self.filename = filename
+        self.dayFactor = dayFactor
 
     def do_EOF(self, arg):
         """End the program."""
@@ -200,7 +201,7 @@ class Cmd(cmd.Cmd):
             {k: v for k, v in self.db.items() if k != name},
             **{name: track_} if track_ else {},
         )
-        print(showEntry(self.db, name, date))
+        print(showEntry(self.db, name, date, self.dayFactor))
 
     def do_set(self, arg):
         """set <name> <date> <amount>
@@ -241,7 +242,7 @@ class Cmd(cmd.Cmd):
         if args:
             name, date = args
             def showData(name, nameWidth=1):
-                return showEntry(self.db, name, date, nameWidth)
+                return showEntry(self.db, name, date, self.dayFactor, nameWidth)
             names = tuple(sorted(self.db))
             print(
                 '\n'.join(
@@ -261,7 +262,10 @@ class Cmd(cmd.Cmd):
         sorted by name, then date.
         """
         def listData(name, nameWidth=1):
-            return listEntries(self.db, name, nameWidth)
+            return '\n'.join(
+                showEntry(self.db, name, entry[0], self.dayFactor, nameWidth)
+                for entry in self.db[name]
+            )
         if arg:
             args = shlexSplit(arg)
             if args:
@@ -289,20 +293,18 @@ class Cmd(cmd.Cmd):
         return tuple(name for name in self.db if name.startswith(text))
 
 
-def main(argv):
-    if not argv:
-        print('Need a filename argument')
-        return 1
-    filename = argv[0] + '.emat'
+def main(args):
+    filename = args.filename + '.emat'
+
     try:
         with open(filename, 'rb') as f:
             db = pickle.load(f)
     except FileNotFoundError:
         db = {}
-    cmd = Cmd(db, filename)
-    cmd.cmdloop()
+
+    Cmd(db, filename, args.dayFactor).cmdloop()
     print()
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
+    main(argParser.parse_args())
