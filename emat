@@ -19,11 +19,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import argparse
+from argparse import ArgumentParser
 from bisect import bisect_left
 import cmd
 from datetime import date as Date
-from functools import lru_cache
+import functools
+from itertools import takewhile
 import pickle
 import readline
 import shlex
@@ -35,7 +36,7 @@ import shlex
 # of a dict is because every command that queries a date also requires us to
 # look at all previous dates.
 
-argParser = argparse.ArgumentParser()
+argParser = ArgumentParser()
 argParser.add_argument(
     'filename',
     help="The filename of the database, not including the '.emat' extention",
@@ -50,7 +51,7 @@ argParser.add_argument(
 
 
 # Memoize this function, because it gets called a lot in comprehensions.
-@lru_cache()
+@functools.lru_cache()
 def maxLen(iterable):
     """Get the maximum length of the items in iterable.
 
@@ -105,15 +106,15 @@ def showEntry(db, name, date, dayFactor, nameWidth=1):
     date.
     """
     decay = 1 - dayFactor
-    # Can we use takeWhile+reduce instead of a loop? Does takeWhile exist?
-    average = 0
-    todaysAmount = 0
-    for thisDate, amount in db[name]:
-        if thisDate > date:
-            break
-        average += amount * dayFactor * decay**(date - thisDate).days
-        if thisDate == date:
-            todaysAmount = amount
+    track = db[name]
+    i, hasToday = findEntry(track, date)
+    todaysAmount = track[i][1] if hasToday else 0
+    average = functools.reduce(
+        lambda average, entry:
+            average + entry[1] * dayFactor * decay**(date - entry[0]).days,
+        takewhile(lambda entry: entry[0] <= date, track),
+        0,
+    )
     # Use .g format for todaysAmount, because without a format, it shows a
     # gratuitous '.0'.
     return f'{name:{nameWidth}} {date} {todaysAmount:.15g} {average:.5g}'
