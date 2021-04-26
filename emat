@@ -111,10 +111,10 @@ def showEntry(db, name, date, dayFactor, nameWidth=1):
     todaysAmount = track[i][1] if hasToday else 0
     average = functools.reduce(
         lambda average, entry:
-            average + entry[1] * dayFactor * decay**(date - entry[0]).days,
+            average + entry[1] * decay**(date - entry[0]).days,
         takewhile(lambda entry: entry[0] <= date, track),
         0,
-    )
+    ) * dayFactor
     # Use .g format for todaysAmount, because without a format, it shows a
     # gratuitous '.0'.
     return f'{name:{nameWidth}} {date} {todaysAmount:.15g} {average:.5g}'
