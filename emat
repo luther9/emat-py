@@ -49,8 +49,14 @@ argParser.add_argument(
     help="The weight of each amount on its own day's average. Should be between 0 and 1.",
 )
 
+NAME_HELP = 'The track name'
+
 listParser = ArgumentParser(prog='list')
-listParser.add_argument('name', nargs='?', help='The track name')
+listParser.add_argument('name', nargs='?', help=NAME_HELP)
+
+getParser = ArgumentParser(prog='get')
+getParser.add_argument('name', nargs='?', help=NAME_HELP)
+getParser.add_argument('date', nargs='?', type=Date.fromisoformat)
 
 
 def shlexSplit(arg):
@@ -85,25 +91,6 @@ def maxLen(iterable):
     If the iterable is empty, return None. Due to memoization, the iterable must
     be hashable."""
     return max(map(len, iterable), default=None)
-
-
-def parseGet(arg):
-    """Parse arguments for the get command.
-
-    If the arguments are invalid, return None. If no date is given, use the
-    current date.
-    """
-    args = shlexSplit(arg)
-    if args is not None:
-        name = args[0] if args else ''
-        try:
-            date = (
-                Date.today() if len(args) < 2 else Date.fromisoformat(args[1])
-            )
-        except ValueError as e:
-            print(e)
-            return
-        return name, date
 
 
 def findEntry(track, date):
@@ -255,11 +242,12 @@ class Cmd(cmd.Cmd):
         the empty string (the default), show a result for every name in the
         database.
         """
-        args = parseGet(arg)
+        args = parseCmdArgs(getParser, arg)
         if args:
-            name, date = args
+            date = args.date or Date.today()
             def showData(name, nameWidth=1):
                 return showEntry(self.db, name, date, self.dayFactor, nameWidth)
+            name = args.name
             names = tuple(sorted(self.db))
             print(
                 '\n'.join(
