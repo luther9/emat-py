@@ -22,6 +22,7 @@
 from argparse import ArgumentParser
 from bisect import bisect_left
 import cmd
+from dataclasses import dataclass
 from datetime import date as Date
 import functools
 from itertools import takewhile
@@ -67,6 +68,13 @@ setParser.add_argument(
 )
 
 
+@dataclass(frozen=True)
+class State:
+    """The program state during the command loop."""
+    db: dict
+    dayFactor: float
+
+
 def parseCmdArgs(parser, arg):
     """Parse the arg string using the given ArgumentParser."""
     try:
@@ -101,19 +109,18 @@ def findEntry(track, date):
     return i, len(dates) > i and dates[i] == date
 
 
-def showEntry(db, name, date, dayFactor, nameWidth=1):
+def showEntry(state, name, date, nameWidth=1):
     """Return a string showing the amount and average for the given name and
     date.
     """
+    dayFactor = state.dayFactor
     decay = 1 - dayFactor
-    track = db[name]
+    track = state.db[name]
     i, hasToday = findEntry(track, date)
     todaysAmount = track[i][1] if hasToday else 0
-    average = functools.reduce(
-        lambda average, entry:
-            average + entry[1] * decay**(date - entry[0]).days,
-        takewhile(lambda entry: entry[0] <= date, track),
-        0,
+    average = sum(
+        entry[1] * decay**(date - entry[0]).days
+        for entry in takewhile(lambda entry: entry[0] <= date, track)
     ) * dayFactor
     # Use .g format for todaysAmount, because without a format, it shows a
     # gratuitous '.0'.
@@ -181,9 +188,8 @@ class Cmd(cmd.Cmd):
 
     def __init__(self, db, filename, dayFactor):
         super().__init__()
-        self.db = db
+        self.state = State(db, dayFactor)
         self.filename = filename
-        self.dayFactor = dayFactor
 
     def do_EOF(self, arg):
         """End the program."""
@@ -191,49 +197,56 @@ class Cmd(cmd.Cmd):
 
     def _setEntry(self, name, date, amount):
         """Set the entry with the given name and date to the amount."""
-        track = self.db.get(name, ())
+        state = self.state
+        db = state.db
+        track = db.get(name, ())
         i, exists = findEntry(track, date)
-        track_ = (
+        newTrack = (
             track[:i]
             + (((date, amount),) if amount else ())
             + track[i + exists :]
         )
-        self.db = dict(
-            {k: v for k, v in self.db.items() if k != name},
-            **{name: track_} if track_ else {},
+        newState = State(
+            dict(
+                {k: v for k, v in db.items() if k != name},
+                **{name: newTrack} if newTrack else {},
+            ),
+            state.dayFactor,
         )
-        print(showEntry(self.db, name, date, self.dayFactor))
+        self.state = newState
+        print(showEntry(newState, name, date))
 
     def do_set(self, arg):
-        """set <name> <date> <amount>
+        """set <name> [<date>] <amount>
 
         Create a database entry. If there is already an entry with the same name
         and date, overwrite the amount. If there are no existing entries with
         the same name, get confirmation to create a new track.
         """
-        args = getArgsForSet(self.db, arg, 'set')
+        args = getArgsForSet(self.state.db, arg, 'set')
         if args:
             self._setEntry(*args)
 
     def do_add(self, arg):
-        """add <name> <date> <amount>
+        """add <name> [<date>] <amount>
 
         Like `set`, but adds the given amount to the current amount to get the
         new amount.
         """
-        args = getArgsForSet(self.db, arg, 'add')
+        db = self.state.db
+        args = getArgsForSet(db, arg, 'add')
         if args:
             name, date, amount = args
-            if name not in self.db:
+            if name not in db:
                 oldAmount = 0
             else:
-                track = self.db[name]
+                track = db[name]
                 i, exists = findEntry(track, date)
                 oldAmount = track[i][1] if exists else 0
             self._setEntry(name, date, oldAmount + amount)
 
     def do_get(self, arg):
-        """get <name> <date>
+        """get [<name> [<date>]]
 
         Show the amount and moving average for the given date. If the name is
         the empty string (the default), show a result for every name in the
@@ -241,32 +254,36 @@ class Cmd(cmd.Cmd):
         """
         args = parseCmdArgs(getParser, arg)
         if args:
+            state = self.state
             date = args.date or Date.today()
             def showData(name, nameWidth=1):
-                return showEntry(self.db, name, date, self.dayFactor, nameWidth)
+                return showEntry(state, name, date, nameWidth)
             name = args.name
-            names = tuple(sorted(self.db))
+            db = state.db
+            names = tuple(sorted(db))
             print(
                 '\n'.join(
                     showData(thisName, maxLen(names)) for thisName in names
                 )
                 if not name
                 else showData(name)
-                if name in self.db
+                if name in db
                 else name + ' is not in the database.',
             )
 
     def do_list(self, arg):
-        """list <name>
+        """list [<name>]
 
         List all entries with a non-zero amount for the given name. Include the
         moving averages. If no name is given, list all entries. Results are
         sorted by name, then date.
         """
+        state = self.state
+        db = state.db
         def listData(name, nameWidth=1):
             return '\n'.join(
-                showEntry(self.db, name, entry[0], self.dayFactor, nameWidth)
-                for entry in self.db[name]
+                showEntry(state, name, entry[0], nameWidth)
+                for entry in db[name]
             )
         args = parseCmdArgs(listParser, arg)
         if args:
@@ -274,11 +291,11 @@ class Cmd(cmd.Cmd):
             if name:
                 print(
                     listData(name)
-                    if name in self.db
+                    if name in db
                     else name + ' is not in the database.',
                 )
             else:
-                names = tuple(sorted(self.db))
+                names = tuple(sorted(db))
                 print(
                     '\n'.join(listData(name, maxLen(names)) for name in names),
                 )
@@ -286,7 +303,7 @@ class Cmd(cmd.Cmd):
     def do_save(self, arg):
         """Save the database."""
         with open(self.filename, 'wb') as f:
-            pickle.dump(self.db, f)
+            pickle.dump(self.state.db, f)
 
     def completedefault(self, text, line, begidx, endidx):
         """Auto-complete the track names."""
@@ -294,7 +311,7 @@ class Cmd(cmd.Cmd):
         # text is the current stretch of non-whitespace. Quote marks seem to be
         # handled in some "smart" way that I can't determine.
         # We must return an indexable sequence, not an iterator.
-        return tuple(name for name in self.db if name.startswith(text))
+        return tuple(name for name in self.state.db if name.startswith(text))
 
 
 def main(args):
