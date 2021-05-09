@@ -37,6 +37,8 @@ import shlex
 # of a dict is because every command that queries a date also requires us to
 # look at all previous dates.
 
+DEFAULT_FACTOR = 0.1
+
 argParser = ArgumentParser()
 argParser.add_argument(
     'filename',
@@ -45,7 +47,7 @@ argParser.add_argument(
 argParser.add_argument(
     'dayFactor',
     nargs='?',
-    default=0.1,
+    default=DEFAULT_FACTOR,
     type=float,
     help="The weight of each amount on its own day's average. Should be between 0 and 1.",
 )
@@ -57,7 +59,12 @@ listParser.add_argument('name', nargs='?', help=NAME_HELP)
 
 getParser = ArgumentParser(prog='get')
 getParser.add_argument('name', nargs='?', help=NAME_HELP)
-getParser.add_argument('date', nargs='?', type=Date.fromisoformat)
+getParser.add_argument(
+    'date',
+    nargs='?',
+    type=Date.fromisoformat,
+    help='Get the entry at this date',
+)
 
 setParser = ArgumentParser(prog='set')
 setParser.add_argument('name', help=NAME_HELP)
@@ -65,6 +72,15 @@ setParser.add_argument(
     'dateOrAmount',
     nargs='+',
     help='Date is optional. Amount is required.',
+)
+
+factorParser = ArgumentParser(prog='factor')
+factorParser.add_argument(
+    'n',
+    nargs='?',
+    default=DEFAULT_FACTOR,
+    type=float,
+    help='The day factor for average calculations',
 )
 
 
@@ -299,6 +315,15 @@ class Cmd(cmd.Cmd):
                 print(
                     '\n'.join(listData(name, maxLen(names)) for name in names),
                 )
+
+    def do_factor(self, arg):
+        """factor [<dayfactor>]
+
+        Change the day factor used for calculating the moving average.
+        """
+        args = parseCmdArgs(factorParser, arg)
+        if args:
+            self.state = State(self.state.db, args.n)
 
     def do_save(self, arg):
         """Save the database."""
