@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from argparse import ArgumentParser
+import argparse
 from bisect import bisect_left
 import cmd
 from dataclasses import dataclass
@@ -39,7 +39,7 @@ import shlex
 
 DEFAULT_FACTOR = 0.1
 
-argParser = ArgumentParser()
+argParser = argparse.ArgumentParser()
 argParser.add_argument(
     'filename',
     help="The filename of the database, not including the '.emat' extention",
@@ -67,10 +67,19 @@ def toDateOrFloat(string):
     raise ValueError('Invalid date or float: ' + string)
 
 
-listParser = ArgumentParser(prog='list')
+class GetDateOrFloat(argparse.Action):
+
+    def __call__(self, parser, namespace, value, option_string=None):
+        if isinstance(value, float):
+            namespace.amount = value
+        elif isinstance(value, Date):
+            namespace.date = value
+
+
+listParser = argparse.ArgumentParser(prog='list')
 listParser.add_argument('name', nargs='?', help=NAME_HELP)
 
-getParser = ArgumentParser(prog='get')
+getParser = argparse.ArgumentParser(prog='get')
 getParser.add_argument('name', nargs='?', help=NAME_HELP)
 getParser.add_argument(
     'date',
@@ -79,16 +88,18 @@ getParser.add_argument(
     help='Get the entry at this date',
 )
 
-setParser = ArgumentParser(prog='set')
+setParser = argparse.ArgumentParser(prog='set')
 setParser.add_argument('name', help=NAME_HELP)
-setParser.add_argument(
-    'dateOrAmount',
-    nargs='+',
-    type=toDateOrFloat,
-    help='Date is optional. Amount is required.',
-)
+for nargs in (None, '?'):
+    setParser.add_argument(
+        'dateOrAmount',
+        action=GetDateOrFloat,
+        nargs=nargs,
+        type=toDateOrFloat,
+        help='Date is optional. Amount is required.',
+    )
 
-factorParser = ArgumentParser(prog='factor')
+factorParser = argparse.ArgumentParser(prog='factor')
 factorParser.add_argument(
     'n',
     nargs='?',
@@ -157,16 +168,6 @@ def showEntry(state, name, date, nameWidth=1):
     return f'{name:{nameWidth}} {date} {todaysAmount:.15g} {average:.5g}'
 
 
-def findType(iterable, cls):
-    """Return the first element of iterable that is an instance of cls.
-
-    If none are successful, return None.
-    """
-    for x in iterable:
-        if isinstance(x, cls):
-            return x
-
-
 def getArgsForSet(db, arg, command):
     """Parse args for 'set' and 'add' commands.
 
@@ -176,24 +177,18 @@ def getArgsForSet(db, arg, command):
     args = parseCmdArgs(setParser, arg)
     if not args:
         return
-    dateAmount = args.dateOrAmount
-    if len(dateAmount) > 2:
-        Cmd(None, None, None).do_help(command)
-        return
-    date = Date.today() if len(dateAmount) < 2 else findType(dateAmount, Date)
-    if date is None:
-        print('No valid date in ', dateAmount)
-        return
-    amount = findType(dateAmount, float)
-    if amount is None:
-        print('No valid amount in ', dateAmount)
+    if hasattr(args, 'amount'):
+        amount = args.amount
+    else:
+        print(command + ' requires an amount')
         return
     name = args.name
     if not name:
         print("Track name can't be an empty string")
         return
     if name not in db:
-        while True:
+        a = None
+        while a != 'y':
             answer = input(
                 'Are you sure you want to create a new track? [Y/n] ',
             )
@@ -202,9 +197,7 @@ def getArgsForSet(db, arg, command):
             a = answer[0].lower()
             if a == 'n':
                 return
-            if a == 'y':
-                break
-    return name, date, amount
+    return name, args.date if hasattr(args, 'date') else Date.today(), amount
 
 
 class Cmd(cmd.Cmd):
