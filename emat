@@ -76,11 +76,12 @@ class GetDateOrFloat(argparse.Action):
             namespace.date = value
 
 
-listParser = argparse.ArgumentParser(prog='list')
-listParser.add_argument('name', nargs='?', help=NAME_HELP)
+optionalNameParser = argparse.ArgumentParser(add_help=False)
+optionalNameParser.add_argument('name', nargs='?', help=NAME_HELP)
 
-getParser = argparse.ArgumentParser(prog='get')
-getParser.add_argument('name', nargs='?', help=NAME_HELP)
+listParser = argparse.ArgumentParser(prog='list', parents=(optionalNameParser,))
+
+getParser = argparse.ArgumentParser(prog='get', parents=(optionalNameParser,))
 getParser.add_argument(
     'date',
     nargs='?',
@@ -88,16 +89,20 @@ getParser.add_argument(
     help='Get the entry at this date',
 )
 
-setParser = argparse.ArgumentParser(prog='set')
-setParser.add_argument('name', help=NAME_HELP)
+mainSetParser = argparse.ArgumentParser(add_help=False)
+mainSetParser.add_argument('name', help=NAME_HELP)
 for nargs in (None, '?'):
-    setParser.add_argument(
+    mainSetParser.add_argument(
         'dateOrAmount',
         action=GetDateOrFloat,
         nargs=nargs,
         type=toDateOrFloat,
         help='Date is optional. Amount is required.',
     )
+
+setParser = argparse.ArgumentParser(prog='set', parents=(mainSetParser,))
+
+addParser = argparse.ArgumentParser(prog='add', parents=(mainSetParser,))
 
 factorParser = argparse.ArgumentParser(prog='factor')
 factorParser.add_argument(
@@ -107,6 +112,10 @@ factorParser.add_argument(
     type=float,
     help='The day factor for average calculations',
 )
+
+
+def noOp():
+    return
 
 
 @dataclass(frozen=True)
@@ -168,36 +177,42 @@ def showEntry(state, name, date, nameWidth=1):
     return f'{name:{nameWidth}} {date} {todaysAmount:.15g} {average:.5g}'
 
 
-def getArgsForSet(db, arg, command):
+def emptyStrError():
+    print("Track name can't be an empty string")
+
+
+def getArgsForSet(db, arg, parser):
     """Parse args for 'set' and 'add' commands.
 
     If arg is invalid, return None. Otherwise, return a (name, date, amount)
     tuple.
     """
-    args = parseCmdArgs(setParser, arg)
+    args = parseCmdArgs(parser, arg)
     if not args:
-        return
+        return noOp
     if hasattr(args, 'amount'):
         amount = args.amount
     else:
-        print(command + ' requires an amount')
-        return
+        def effect():
+            print(parser.prog + ' requires an amount')
+        return effect
     name = args.name
     if not name:
-        print("Track name can't be an empty string")
-        return
-    if name not in db:
-        a = None
-        while a != 'y':
-            answer = input(
-                'Are you sure you want to create a new track? [Y/n] ',
-            )
-            if not answer:
-                break
-            a = answer[0].lower()
-            if a == 'n':
-                return
-    return name, args.date if hasattr(args, 'date') else Date.today(), amount
+        return emptyStrError
+    def effect():
+        if name not in db:
+            a = None
+            while a != 'y':
+                answer = input(
+                    'Are you sure you want to create a new track? [Y/n] ',
+                )
+                if not answer:
+                    break
+                a = answer[0].lower()
+                if a == 'n':
+                    return
+        return name, getattr(args, 'date', Date.today()), amount
+    return effect
 
 
 class Cmd(cmd.Cmd):
@@ -241,7 +256,7 @@ class Cmd(cmd.Cmd):
         and date, overwrite the amount. If there are no existing entries with
         the same name, get confirmation to create a new track.
         """
-        args = getArgsForSet(self.state.db, arg, 'set')
+        args = getArgsForSet(self.state.db, arg, setParser)()
         if args:
             self._setEntry(*args)
 
@@ -252,7 +267,7 @@ class Cmd(cmd.Cmd):
         new amount.
         """
         db = self.state.db
-        args = getArgsForSet(db, arg, 'add')
+        args = getArgsForSet(db, arg, addParser)()
         if args:
             name, date, amount = args
             if name not in db:
