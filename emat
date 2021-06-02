@@ -190,12 +190,6 @@ def getArgsForSet(db, arg, parser):
     args = parseCmdArgs(parser, arg)
     if not args:
         return noOp
-    if hasattr(args, 'amount'):
-        amount = args.amount
-    else:
-        def effect():
-            print(parser.prog + ' requires an amount')
-        return effect
     name = args.name
     if not name:
         return emptyStrError
@@ -211,7 +205,11 @@ def getArgsForSet(db, arg, parser):
                 a = answer[0].lower()
                 if a == 'n':
                     return
-        return name, getattr(args, 'date', Date.today()), amount
+        return (
+            name,
+            args.date if hasattr(args, 'date') else Date.today(),
+            getattr(args, 'amount', 1),
+        )
     return effect
 
 
