@@ -91,13 +91,13 @@ getParser.add_argument(
 
 mainSetParser = argparse.ArgumentParser(add_help=False)
 mainSetParser.add_argument('name', help=NAME_HELP)
-for nargs in (None, '?'):
+for _ in range(2):
     mainSetParser.add_argument(
         'dateOrAmount',
         action=GetDateOrFloat,
-        nargs=nargs,
+        nargs='?',
         type=toDateOrFloat,
-        help='Date is optional. Amount is required.',
+        help='The date or the amount',
     )
 
 setParser = argparse.ArgumentParser(prog='set', parents=(mainSetParser,))
